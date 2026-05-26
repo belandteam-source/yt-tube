@@ -1,4 +1,34 @@
 #EXTM3U
 #EXT-X-VERSION:3
-# Generated: 2026-05-26 13:09:53 UTC
-# Total channels: 0
+# Generated: 2026-05-26 13:30:01 UTC
+# Total channels: 10
+
+#EXTINF:-1 tvg-id="https://www.youtube.com/live/Nq2wYlWFucg" tvg-name="Nq2wYlWFucg" group-title="Offline",Nq2wYlWFucg [Offline]
+https://www.youtube.com/watch?v=
+
+#EXTINF:-1 tvg-id="https://www.youtube.com/live/nyd-xznCpJc" tvg-name="nyd-xznCpJc" group-title="Offline",nyd-xznCpJc [Offline]
+https://www.youtube.com/watch?v=
+
+#EXTINF:-1 tvg-id="https://www.youtube.com/@bigtv24x7live/live" tvg-name="live" group-title="Offline",live [Offline]
+https://www.youtube.com/watch?v=
+
+#EXTINF:-1 tvg-id="https://www.youtube.com/@cricketcomau/live" tvg-name="live" group-title="Offline",live [Offline]
+https://www.youtube.com/watch?v=
+
+#EXTINF:-1 tvg-id="https://www.youtube.com/@RajasthanPatrikaTV/live" tvg-name="live" group-title="Offline",live [Offline]
+https://www.youtube.com/watch?v=
+
+#EXTINF:-1 tvg-id="https://www.youtube.com/@ABCNews/live" tvg-name="live" group-title="Offline",live [Offline]
+https://www.youtube.com/watch?v=
+
+#EXTINF:-1 tvg-id="https://www.youtube.com/@HT-Videos/live" tvg-name="live" group-title="Offline",live [Offline]
+https://www.youtube.com/watch?v=
+
+#EXTINF:-1 tvg-id="https://www.youtube.com/@livenowfox/live" tvg-name="live" group-title="Offline",live [Offline]
+https://www.youtube.com/watch?v=
+
+#EXTINF:-1 tvg-id="https://www.youtube.com/live/5UjaUWbnWZ4" tvg-name="5UjaUWbnWZ4" group-title="Offline",5UjaUWbnWZ4 [Offline]
+https://www.youtube.com/watch?v=
+
+#EXTINF:-1 tvg-id="https://wwww.youtube.com/@newsxworldlive/live" tvg-name="live" group-title="Offline",live [Offline]
+https://www.youtube.com/watch?v=
