@@ -20,7 +20,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install yt-dlp requests
+        run: pip install -U yt-dlp requests
 
       - name: Write cookies
         env:
