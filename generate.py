@@ -32,108 +32,86 @@ class YouTubePlaylistGenerator:
         return safe.lower()
 
     def get_stream_info(self, url):
-        ydl_opts = {
-            'quiet': False,
-            'no_warnings': False,
-            'socket_timeout': 60,
-            'retries': 3,
-            'geo_bypass': True,
-            'extractor_args': {
-                'youtube': {
-                    'player_client': ['tv_embedded', 'web_embedded', 'android_vr'],
-                    'skip': ['translated_subs'],
-                }
-            },
-            'format': 'best/bestvideo+bestaudio',
-        }
+        # Try multiple player clients one by one
+        player_clients = ['mweb', 'web_creator', 'mediaconnect']
 
-        if os.path.exists(self.cookies_file):
-            ydl_opts['cookiefile'] = self.cookies_file
-            print(f"  🍪 Using cookies file")
+        for client in player_clients:
+            print(f"  🔄 Trying client: {client}")
+            ydl_opts = {
+                'quiet': True,
+                'no_warnings': True,
+                'socket_timeout': 30,
+                'retries': 2,
+                'geo_bypass': True,
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': [client],
+                    }
+                },
+                'format': 'best',
+            }
 
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
+            if os.path.exists(self.cookies_file):
+                ydl_opts['cookiefile'] = self.cookies_file
 
-                if not info:
-                    return None
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                    if not info:
+                        continue
 
-                video_id = info.get('id', '')
-                channel_id = info.get('channel_id', video_id)
-                title = info.get('title', 'Unknown')
-                channel_name = info.get('channel', info.get('uploader', 'Unknown'))
-                channel_url = info.get('channel_url', url)
-                clean_name = re.sub(r'[^\w\s-]', '', channel_name).strip()
-
-                live_status = info.get('live_status', '')
-                is_live = live_status in ['is_live', 'is_upcoming', 'live'] or info.get('is_live')
-                print(f"  📡 Live status: {live_status}, is_live: {is_live}")
-
-                formats = info.get('formats', [])
-                print(f"  📋 Total formats: {len(formats)}")
-
-                # Get direct URL if available
-                direct_url = info.get('url', '')
-
-                video_formats = [
-                    f for f in formats
-                    if f.get('url') and
-                    f.get('vcodec', 'none') != 'none' and
-                    'manifest.googlevideo.com' in f.get('url', '')
-                ]
-
-                if not video_formats:
+                    formats = info.get('formats', [])
                     video_formats = [
                         f for f in formats
                         if f.get('url') and f.get('vcodec', 'none') != 'none'
                     ]
 
-                if not video_formats and direct_url:
-                    video_formats = [{'url': direct_url, 'height': 0, 'quality_tag': 'Auto'}]
+                    direct_url = info.get('url', '')
+                    if not video_formats and direct_url:
+                        video_formats = [{'url': direct_url, 'height': 0}]
 
-                if not video_formats:
-                    print(f"  ⚫ No usable formats")
-                    return {
-                        'status': 'offline',
-                        'video_id': video_id,
-                        'channel_id': channel_id,
-                        'name': clean_name,
-                        'title': title,
-                        'channel_url': channel_url,
-                        'is_live': False,
-                    }
+                    if video_formats:
+                        print(f"  ✅ Client {client} worked! {len(video_formats)} formats")
+                        video_id = info.get('id', '')
+                        channel_id = info.get('channel_id', video_id)
+                        channel_name = info.get('channel', info.get('uploader', 'Unknown'))
+                        clean_name = re.sub(r'[^\w\s-]', '', channel_name).strip()
+                        title = info.get('title', 'Unknown')
+                        channel_url = info.get('channel_url', url)
+                        is_live = info.get('live_status', '') in ['is_live', 'live'] or info.get('is_live', False)
 
-                video_formats.sort(key=lambda f: f.get('height', 0), reverse=True)
-                print(f"  ✅ Found {len(video_formats)} video formats, best: {video_formats[0].get('height',0)}p")
+                        video_formats.sort(key=lambda f: f.get('height', 0), reverse=True)
 
-                streams = {}
-                hd = [f for f in video_formats if f.get('height', 0) >= 720]
-                if hd:
-                    streams['hd'] = {'url': hd[0]['url'], 'height': hd[0].get('height', 0), 'quality_tag': f"{hd[0].get('height',0)}p"}
+                        streams = {}
+                        hd = [f for f in video_formats if f.get('height', 0) >= 720]
+                        if hd:
+                            streams['hd'] = {'url': hd[0]['url'], 'height': hd[0].get('height', 0), 'quality_tag': f"{hd[0].get('height',0)}p"}
 
-                mobile = [f for f in video_formats if 0 < f.get('height', 0) <= 480]
-                if mobile:
-                    streams['mobile'] = {'url': mobile[0]['url'], 'height': mobile[0].get('height', 0), 'quality_tag': f"{mobile[0].get('height',0)}p"}
+                        mobile = [f for f in video_formats if 0 < f.get('height', 0) <= 480]
+                        if mobile:
+                            streams['mobile'] = {'url': mobile[0]['url'], 'height': mobile[0].get('height', 0), 'quality_tag': f"{mobile[0].get('height',0)}p"}
 
-                if not streams:
-                    streams['main'] = {'url': video_formats[0]['url'], 'height': video_formats[0].get('height', 0), 'quality_tag': f"{video_formats[0].get('height',0)}p"}
+                        if not streams:
+                            streams['main'] = {'url': video_formats[0]['url'], 'height': video_formats[0].get('height', 0), 'quality_tag': f"{video_formats[0].get('height',0)}p"}
 
-                self.cache['channels'][channel_id] = {'name': channel_name, 'video_id': video_id, 'last_seen': datetime.now().isoformat()}
+                        self.cache['channels'][channel_id] = {'name': channel_name, 'video_id': video_id, 'last_seen': datetime.now().isoformat()}
 
-                return {
-                    'status': 'live',
-                    'video_id': video_id,
-                    'channel_id': channel_id,
-                    'name': clean_name,
-                    'title': title,
-                    'channel_url': channel_url,
-                    'streams': streams,
-                    'is_live': is_live,
-                }
+                        return {
+                            'status': 'live',
+                            'video_id': video_id,
+                            'channel_id': channel_id,
+                            'name': clean_name,
+                            'title': title,
+                            'channel_url': channel_url,
+                            'streams': streams,
+                            'is_live': is_live,
+                        }
+            except Exception as e:
+                print(f"  ⚠️ Client {client} failed: {str(e)[:100]}")
+                continue
 
-        except Exception as e:
-            print(f"  ❌ Error: {str(e)[:200]}")
-            return None
+        print(f"  ⚫ All clients failed")
+        return {'status': 'offline', 'video_id': '', 'channel_id': url, 'name': url.split('/')[-1], 'title': '', 'channel_url': url, 'is_live': False}
 
     def generate_playlists(self, channels_data):
         now_utc = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
