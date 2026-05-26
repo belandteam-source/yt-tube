@@ -45,6 +45,9 @@ jobs:
           sudo mkdir -p /etc/wireguard
           sudo cp wgcf-profile.conf /etc/wireguard/wgcf.conf
           sudo wg-quick up /etc/wireguard/wgcf.conf || true
+          echo "Waiting for WARP to connect..."
+          sleep 10
+          curl -s https://cloudflare.com/cdn-cgi/trace | grep ip || true
 
       - name: Write cookies
         env:
