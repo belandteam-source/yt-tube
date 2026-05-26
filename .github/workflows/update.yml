@@ -1,36 +1,64 @@
 name: Update YouTube Streams
 
 on:
+  workflow_dispatch:
   schedule:
     - cron: '0 */5 * * *'
-  workflow_dispatch:
+  push:
+    paths:
+      - 'streams.txt'
+      - 'generate.py'
+
+permissions:
+  contents: write
+
+env:
+  PYTHONUNBUFFERED: "1"
 
 jobs:
   update:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           token: ${{ secrets.PAT_TOKEN }}
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
+      - name: Setup Python & dependencies
+        run: |
+          pip install --upgrade pip yt-dlp requests
+          echo "yt-dlp: $(yt-dlp --version)"
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '20'
-
-      - name: Install dependencies
-        run: pip install -U yt-dlp requests
+      - name: Setup Cloudflare WARP
+        continue-on-error: true
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq wireguard-tools iptables
+          curl -fsSL https://github.com/ViRb3/wgcf/releases/download/v2.2.22/wgcf_2.2.22_linux_amd64 -o wgcf
+          chmod +x wgcf
+          sudo mv wgcf /usr/local/bin/
+          wgcf register --accept-tos
+          wgcf generate
+          sudo mkdir -p /etc/wireguard
+          sudo cp wgcf-profile.conf /etc/wireguard/wgcf.conf
+          sudo wg-quick up /etc/wireguard/wgcf.conf || true
 
       - name: Write cookies
         env:
           YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
-        run: echo "$YOUTUBE_COOKIES" > cookies.txt
+        run: |
+          if [ -z "$YOUTUBE_COOKIES" ]; then
+            echo "No cookies found"
+            exit 1
+          fi
+          echo "$YOUTUBE_COOKIES" > cookies.txt
+
+      - name: Create directories
+        run: |
+          mkdir -p channels
+          touch channels/.gitkeep
 
       - name: Run generator
         run: python generate.py
@@ -40,6 +68,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git remote set-url origin https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/belandteam-source/yt-tube.git
-          git add -A
+          git add streams*.m3u8 stats.json channels/ || true
           git diff --staged --quiet || git commit -m "Update streams $(date -u '+%Y-%m-%d %H:%M UTC')"
           git push
+
+      - name: Cleanup
+        if: always()
+        run: rm -f cookies.txt wgcf-profile.conf wgcf-account.toml 2>/dev/null || true
