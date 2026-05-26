@@ -64,11 +64,13 @@ jobs:
         run: python generate.py
 
       - name: Commit and push
+        timeout-minutes: 2
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git remote set-url origin https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/belandteam-source/yt-tube.git
-          git pull --rebase origin main || true
+          git fetch origin main
+          git reset --hard origin/main
           git add streams*.m3u8 stats.json channels/ || true
           git diff --staged --quiet || git commit -m "Update streams $(date -u '+%Y-%m-%d %H:%M UTC')"
           git push
