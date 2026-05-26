@@ -23,7 +23,15 @@ jobs:
         run: pip install yt-dlp requests
 
       - name: Write cookies
-        run: echo "${{ secrets.YOUTUBE_COOKIES }}" > cookies.txt
+        env:
+          YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
+        run: echo "$YOUTUBE_COOKIES" > cookies.txt
+
+      - name: Debug cookies
+        run: |
+          echo "Cookie lines:"
+          wc -l cookies.txt
+          head -2 cookies.txt
 
       - name: Run generator
         run: python generate.py
