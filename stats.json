@@ -1,15 +1,6 @@
 {
+  "generated": "2026-05-26 12:55:27 UTC",
   "total": 0,
   "live": 0,
-  "offline": 0,
-  "error": 0,
-  "qualities": {
-    "1080p": 0,
-    "720p": 0,
-    "480p": 0,
-    "other": 0
-  },
-  "by_category": {},
-  "by_country": {},
-  "individual_channels": []
+  "offline": 0
 }
