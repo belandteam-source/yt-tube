@@ -19,6 +19,11 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
       - name: Install dependencies
         run: pip install -U yt-dlp requests
 
@@ -26,12 +31,6 @@ jobs:
         env:
           YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
         run: echo "$YOUTUBE_COOKIES" > cookies.txt
-
-      - name: Debug cookies
-        run: |
-          echo "Cookie lines:"
-          wc -l cookies.txt
-          head -2 cookies.txt
 
       - name: Run generator
         run: python generate.py
