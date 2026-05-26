@@ -1,11 +1,7 @@
-# Nigeria YT Streams - Nigerian News
-https://www.youtube.com/live/Nq2wYlWFucg
-https://www.youtube.com/live/nyd-xznCpJc
-https://www.youtube.com/@bigtv24x7live/live
-https://www.youtube.com/@cricketcomau/live
-https://www.youtube.com/@RajasthanPatrikaTV/live
-https://www.youtube.com/@ABCNews/live
-https://www.youtube.com/@HT-Videos/live
-https://www.youtube.com/@livenowfox/live
-https://www.youtube.com/live/5UjaUWbnWZ4
-https://wwww.youtube.com/@newsxworldlive/live
+# Testing YT
+https://www.youtube.com/@ptcnews/live
+https://www.youtube.com/@geonews/live
+https://www.youtube.com/@BOLNewsofficial/live
+https://www.youtube.com/@92newshdTv/live
+https://www.youtube.com/@JaiMaharashtranews/live
+
