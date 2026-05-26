@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>📺 Individual Channels</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container { 
+            max-width: 1200px; 
+            margin: 0 auto; 
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        .header { 
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white; 
+            padding: 30px; 
+            text-align: center;
+        }
+        .header h1 { font-size: 2em; margin-bottom: 10px; }
+        .content { padding: 30px; }
+        .channel-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .channel-card {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            border-left: 4px solid #4CAF50;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+        .channel-card:hover { transform: translateY(-2px); }
+        .channel-name {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        .channel-country {
+            color: #666;
+            font-size: 0.9em;
+            margin-bottom: 5px;
+        }
+        .channel-quality {
+            color: #4CAF50;
+            font-size: 0.9em;
+            margin-bottom: 15px;
+        }
+        .btn {
+            display: inline-block;
+            background: #4CAF50;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            text-decoration: none;
+            margin-right: 8px;
+            font-size: 0.9em;
+            border: none;
+            cursor: pointer;
+        }
+        .btn:hover { background: #45a049; }
+        .btn-outline {
+            background: transparent;
+            border: 2px solid #4CAF50;
+            color: #4CAF50;
+        }
+        .btn-outline:hover {
+            background: #4CAF50;
+            color: white;
+        }
+        .channel-url {
+            margin-top: 10px;
+            font-size: 0.8em;
+            color: #666;
+        }
+        .footer {
+            background: #f8f9fa;
+            padding: 20px;
+            text-align: center;
+            color: #666;
+            border-top: 1px solid #e0e0e0;
+        }
+        code {
+            background: #f5f5f5;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-size: 0.9em;
+        }
+        @media (max-width: 768px) {
+            .channel-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📺 Individual Channel Streams</h1>
+            <p>Direct M3U8 links for each channel</p>
+        </div>
+        
+        <div class="content">
+            <div style="margin-bottom: 20px;">
+                <a href="../streams.m3u8" class="btn">📋 Main Playlist</a>
+                <a href="../streams_hd.m3u8" class="btn">🎥 HD Playlist</a>
+                <a href="../streams_mobile.m3u8" class="btn">📱 Mobile Playlist</a>
+                <a href="../epg.xml" class="btn">📺 EPG Guide</a>
+            </div>
+            
+            <h2 style="margin-bottom: 20px;">Available Channels (0)</h2>
+            <div class="channel-grid">
+                
+        <div style="text-align: center; padding: 40px; background: #f8f9fa; border-radius: 12px;">
+            <p style="font-size: 1.2em; color: #666;">📡 No channels available at the moment</p>
+            <p style="color: #999; margin-top: 10px;">Check back after the next workflow run (every 6 hours)</p>
+        </div>
+        
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>🔄 Refreshes every 6 hours • URLs expire ~6 hours</p>
+            <p>⏰ Last updated: 2026-05-26 12:48 UTC</p>
+            <p>🔗 <a href="https://github.com/uticap/Youtube-to-M3u8">GitHub Repository</a></p>
+        </div>
+    </div>
+</body>
+</html>
