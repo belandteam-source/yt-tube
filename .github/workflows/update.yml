@@ -68,7 +68,7 @@ jobs:
         run: python generate.py
 
       - name: Commit and push
-        timeout-minutes: 5
+        timeout-minutes: 15
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
