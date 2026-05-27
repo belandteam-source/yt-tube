@@ -1,34 +1,34 @@
 #EXTM3U
 #EXT-X-VERSION:3
-# Generated: 2026-05-27 13:52:30 UTC
+# Generated: 2026-05-27 14:00:08 UTC
 # Total channels: 10
 
 #EXTINF:-1 tvg-id="https://www.youtube.com/@ptcnews/live" tvg-name="live" group-title="Offline",live [Offline]
-https://www.youtube.com/watch?v=
+https://www.youtube.com/@ptcnews/live
 
 #EXTINF:-1 tvg-id="https://www.youtube.com/@geonews/live" tvg-name="live" group-title="Offline",live [Offline]
-https://www.youtube.com/watch?v=
+https://www.youtube.com/@geonews/live
 
 #EXTINF:-1 tvg-id="https://www.youtube.com/@BOLNewsofficial/live" tvg-name="live" group-title="Offline",live [Offline]
-https://www.youtube.com/watch?v=
+https://www.youtube.com/@BOLNewsofficial/live
 
 #EXTINF:-1 tvg-id="https://www.youtube.com/@92newshdTv/live" tvg-name="live" group-title="Offline",live [Offline]
-https://www.youtube.com/watch?v=
+https://www.youtube.com/@92newshdTv/live
 
 #EXTINF:-1 tvg-id="https://www.youtube.com/@JaiMaharashtranews/live" tvg-name="live" group-title="Offline",live [Offline]
-https://www.youtube.com/watch?v=
+https://www.youtube.com/@JaiMaharashtranews/live
 
 #EXTINF:-1 tvg-id="https://www.youtube.com/live/5UjaUWbnWZ4" tvg-name="5UjaUWbnWZ4" group-title="Offline",5UjaUWbnWZ4 [Offline]
-https://www.youtube.com/watch?v=
+https://www.youtube.com/live/5UjaUWbnWZ4
 
 #EXTINF:-1 tvg-id="https://www.youtube.com/live/_FwympjOSNE" tvg-name="_FwympjOSNE" group-title="Offline",_FwympjOSNE [Offline]
-https://www.youtube.com/watch?v=
+https://www.youtube.com/live/_FwympjOSNE
 
 #EXTINF:-1 tvg-id="https://www.youtube.com/live/cleNtpjod6Q" tvg-name="cleNtpjod6Q" group-title="Offline",cleNtpjod6Q [Offline]
-https://www.youtube.com/watch?v=
+https://www.youtube.com/live/cleNtpjod6Q
 
 #EXTINF:-1 tvg-id="https://www.youtube.com/@MadaniChannelUrduLive/live" tvg-name="live" group-title="Offline",live [Offline]
-https://www.youtube.com/watch?v=
+https://www.youtube.com/@MadaniChannelUrduLive/live
 
 #EXTINF:-1 tvg-id="https://www.youtube.com/live/e2XVSUYh4S0" tvg-name="e2XVSUYh4S0" group-title="Offline",e2XVSUYh4S0 [Offline]
-https://www.youtube.com/watch?v=
+https://www.youtube.com/live/e2XVSUYh4S0
