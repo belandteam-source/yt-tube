@@ -32,8 +32,8 @@ class YouTubePlaylistGenerator:
         return safe.lower()
 
     def get_stream_info(self, url):
-        # Try multiple player clients one by one
-        player_clients = ['mweb', 'web_creator', 'mediaconnect']
+        # Try multiple player clients — ordered by reliability for live streams
+        player_clients = ['ios', 'android', 'tv_embedded', 'mweb', 'web_creator', 'mediaconnect']
 
         for client in player_clients:
             print(f"  🔄 Trying client: {client}")
@@ -60,6 +60,11 @@ class YouTubePlaylistGenerator:
                     if not info:
                         continue
 
+                    # Skip if yt-dlp says it's not live
+                    live_status = info.get('live_status', '')
+                    is_live = live_status in ('is_live', 'live') or info.get('is_live', False)
+                    print(f"  ℹ️ live_status={live_status} is_live={is_live}")
+
                     formats = info.get('formats', [])
                     video_formats = [
                         f for f in formats
@@ -78,7 +83,6 @@ class YouTubePlaylistGenerator:
                         clean_name = re.sub(r'[^\w\s-]', '', channel_name).strip()
                         title = info.get('title', 'Unknown')
                         channel_url = info.get('channel_url', url)
-                        is_live = info.get('live_status', '') in ['is_live', 'live'] or info.get('is_live', False)
 
                         video_formats.sort(key=lambda f: f.get('height', 0), reverse=True)
 
@@ -94,7 +98,11 @@ class YouTubePlaylistGenerator:
                         if not streams:
                             streams['main'] = {'url': video_formats[0]['url'], 'height': video_formats[0].get('height', 0), 'quality_tag': f"{video_formats[0].get('height',0)}p"}
 
-                        self.cache['channels'][channel_id] = {'name': channel_name, 'video_id': video_id, 'last_seen': datetime.now().isoformat()}
+                        self.cache['channels'][channel_id] = {
+                            'name': channel_name,
+                            'video_id': video_id,
+                            'last_seen': datetime.now().isoformat()
+                        }
 
                         return {
                             'status': 'live',
@@ -107,37 +115,48 @@ class YouTubePlaylistGenerator:
                             'is_live': is_live,
                         }
             except Exception as e:
-                print(f"  ⚠️ Client {client} failed: {str(e)[:100]}")
+                print(f"  ⚠️ Client {client} failed: {str(e)[:120]}")
                 continue
 
-        print(f"  ⚫ All clients failed")
-        return {'status': 'offline', 'video_id': '', 'channel_id': url, 'name': url.split('/')[-1], 'title': '', 'channel_url': url, 'is_live': False}
+        print(f"  ⚫ All clients failed for {url}")
+        return {
+            'status': 'offline',
+            'video_id': '',
+            'channel_id': url,
+            'name': url.split('/')[-1],
+            'title': '',
+            'channel_url': url,
+            'is_live': False
+        }
 
     def generate_playlists(self, channels_data):
         now_utc = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
         header = ["#EXTM3U", "#EXT-X-VERSION:3", f"# Generated: {now_utc}", f"# Total channels: {len(channels_data)}", ""]
 
-        main_lines = header.copy()
-        hd_lines = header.copy()
+        main_lines   = header.copy()
+        hd_lines     = header.copy()
         mobile_lines = header.copy()
-        live_count = 0
+        audio_lines  = header.copy()
+        live_count   = 0
         offline_count = 0
 
         for ch in channels_data:
-            name = ch.get('name', 'Unknown')
+            name       = ch.get('name', 'Unknown')
             channel_id = ch.get('channel_id', '')
-            video_id = ch.get('video_id', '')
+            video_id   = ch.get('video_id', '')
 
             if ch.get('status') == 'live':
                 live_count += 1
-                main_stream = ch.get('streams', {}).get('hd') or next(iter(ch.get('streams', {}).values()), None)
-                mobile_stream = ch.get('streams', {}).get('mobile')
+                streams = ch.get('streams', {})
+                main_stream   = streams.get('hd') or next(iter(streams.values()), None)
+                mobile_stream = streams.get('mobile')
 
                 if main_stream:
                     qtag = main_stream.get('quality_tag', 'Auto')
-                    main_lines += [f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{name}" group-title="Live",{name} [{qtag}] 🔴', main_stream['url'], ""]
-                    hd_lines += [f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{name}" group-title="HD",{name} [HD]', main_stream['url'], ""]
+                    main_lines   += [f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{name}" group-title="Live",{name} [{qtag}] 🔴', main_stream['url'], ""]
+                    hd_lines     += [f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{name}" group-title="HD",{name} [HD]', main_stream['url'], ""]
                     mobile_lines += [f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{name}" group-title="Mobile",{name} [Mobile]', (mobile_stream or main_stream)['url'], ""]
+                    audio_lines  += [f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{name}" group-title="Audio",{name} [Audio]', main_stream['url'], ""]
 
                     safe = self.safe_filename(name)
                     with open(f"{self.channels_dir}/{safe}.m3u8", 'w', encoding='utf-8') as f:
@@ -146,17 +165,28 @@ class YouTubePlaylistGenerator:
                         f.write(main_stream['url'] + "\n")
             else:
                 offline_count += 1
-                fallback = f"https://www.youtube.com/watch?v={video_id}"
-                for lines in [main_lines, hd_lines, mobile_lines]:
+                fallback = f"https://www.youtube.com/watch?v={video_id}" if video_id else ch.get('channel_url', '')
+                for lines in [main_lines, hd_lines, mobile_lines, audio_lines]:
                     lines += [f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{name}" group-title="Offline",{name} [Offline]', fallback, ""]
 
-        for filename, lines in [('streams.m3u8', main_lines), ('streams_hd.m3u8', hd_lines), ('streams_mobile.m3u8', mobile_lines)]:
+        file_map = [
+            ('streams.m3u8',        main_lines),
+            ('streams_hd.m3u8',     hd_lines),
+            ('streams_mobile.m3u8', mobile_lines),
+            ('streams_audio.m3u8',  audio_lines),
+        ]
+        for filename, lines in file_map:
             with open(filename, 'w', encoding='utf-8') as f:
                 f.write('\n'.join(lines))
             print(f"✅ {filename}")
 
         with open('stats.json', 'w') as f:
-            json.dump({'generated': now_utc, 'total': len(channels_data), 'live': live_count, 'offline': offline_count}, f, indent=2)
+            json.dump({
+                'generated': now_utc,
+                'total': len(channels_data),
+                'live': live_count,
+                'offline': offline_count
+            }, f, indent=2)
 
         return live_count, offline_count
 
@@ -175,7 +205,7 @@ def main():
 
     for i, url in enumerate(lines, 1):
         print(f"\n[{i}/{len(lines)}] {url}")
-        time.sleep(random.uniform(2, 4))
+        time.sleep(random.uniform(3, 6))
         info = generator.get_stream_info(url)
         if info:
             channels_data.append(info)
