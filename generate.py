@@ -32,21 +32,41 @@ class YouTubePlaylistGenerator:
         return safe.lower()
 
     def random_ip(self):
-        return f"{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}"
+        # Use African/Asian IP ranges — less blocked by YouTube than US datacenter IPs
+        ranges = [
+            # Nigeria ranges
+            f"41.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
+            f"197.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
+            # Pakistan ranges
+            f"39.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
+            f"119.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
+            # India ranges
+            f"49.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
+            f"103.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
+        ]
+        return random.choice(ranges)
 
     def get_stream_info(self, url):
-        # Try multiple clients
-        player_clients = ['android', 'ios', 'tv_embedded', 'web']
+        # Try multiple country bypass + client combinations
+        attempts = [
+            ('android', 'NG'),
+            ('ios',     'NG'),
+            ('android', 'PK'),
+            ('ios',     'IN'),
+            ('android', 'MX'),
+            ('web',     'NG'),
+        ]
 
-        for client in player_clients:
-            print(f"  🔄 Trying client: {client}")
+        for client, country in attempts:
+            print(f"  🔄 Trying client={client} country={country}")
             ydl_opts = {
                 'quiet': False,
                 'no_warnings': False,
                 'socket_timeout': 30,
                 'retries': 3,
                 'geo_bypass': True,
-                'geo_bypass_country': 'US',
+                'geo_bypass_country': country,
+                'xff': country,
                 'extractor_args': {
                     'youtube': {
                         'player_client': [client],
@@ -89,10 +109,10 @@ class YouTubePlaylistGenerator:
                         print(f"  ⚠️ Has formats, treating as live")
 
                     if not video_formats:
-                        print(f"  ⚫ No formats, trying next client")
+                        print(f"  ⚫ No formats for {client}/{country}, trying next")
                         continue
 
-                    print(f"  ✅ Client {client} worked! {len(video_formats)} formats")
+                    print(f"  ✅ Success! client={client} country={country} formats={len(video_formats)}")
 
                     video_id     = info.get('id', '')
                     channel_id   = info.get('channel_id', video_id)
@@ -133,10 +153,10 @@ class YouTubePlaylistGenerator:
                     }
 
             except Exception as e:
-                print(f"  ⚠️ Client {client} failed: {str(e)[:150]}")
+                print(f"  ⚠️ client={client} country={country} failed: {str(e)[:150]}")
                 continue
 
-        print(f"  ⚫ All clients failed")
+        print(f"  ⚫ All attempts failed for {url}")
         return {
             'status': 'offline',
             'video_id': '',
@@ -159,14 +179,14 @@ class YouTubePlaylistGenerator:
         offline_count = 0
 
         for ch in channels_data:
-            name       = ch.get('name', 'Unknown')
-            channel_id = ch.get('channel_id', '')
-            video_id   = ch.get('video_id', '')
+            name        = ch.get('name', 'Unknown')
+            channel_id  = ch.get('channel_id', '')
+            video_id    = ch.get('video_id', '')
 
             if ch.get('status') == 'live':
                 live_count += 1
-                streams     = ch.get('streams', {})
-                main_stream = streams.get('hd') or next(iter(streams.values()), None)
+                streams      = ch.get('streams', {})
+                main_stream  = streams.get('hd') or next(iter(streams.values()), None)
                 mobile_stream = streams.get('mobile')
 
                 if main_stream:
@@ -188,17 +208,22 @@ class YouTubePlaylistGenerator:
                     lines += [f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{name}" group-title="Offline",{name} [Offline]', fallback, ""]
 
         for filename, lines in [
-            ('streams.m3u8', main_lines),
-            ('streams_hd.m3u8', hd_lines),
+            ('streams.m3u8',        main_lines),
+            ('streams_hd.m3u8',     hd_lines),
             ('streams_mobile.m3u8', mobile_lines),
-            ('streams_audio.m3u8', audio_lines)
+            ('streams_audio.m3u8',  audio_lines),
         ]:
             with open(filename, 'w', encoding='utf-8') as f:
                 f.write('\n'.join(lines))
             print(f"✅ {filename}")
 
         with open('stats.json', 'w') as f:
-            json.dump({'generated': now_utc, 'total': len(channels_data), 'live': live_count, 'offline': offline_count}, f, indent=2)
+            json.dump({
+                'generated': now_utc,
+                'total': len(channels_data),
+                'live': live_count,
+                'offline': offline_count
+            }, f, indent=2)
 
         return live_count, offline_count
 
