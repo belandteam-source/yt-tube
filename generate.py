@@ -31,102 +31,126 @@ class YouTubePlaylistGenerator:
         safe = re.sub(r'[-\s]+', '_', safe)
         return safe.lower()
 
+    def random_ip(self):
+        return f"{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}"
+
     def get_stream_info(self, url):
-        # Try multiple player clients — ordered by reliability for live streams
-        player_clients = ['ios', 'android', 'tv_embedded', 'mweb', 'web_creator', 'mediaconnect']
+        ydl_opts = {
+            'cookiefile': self.cookies_file if os.path.exists(self.cookies_file) else None,
+            'quiet': True,
+            'no_warnings': True,
+            'socket_timeout': 30,
+            'retries': 5,
+            'geo_bypass': True,
+            'geo_bypass_country': 'US',
+            'xff': 'US',
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'ios'],
+                    'live_from_start': True,
+                    'skip': ['webpage', 'configs'],
+                }
+            },
+            'headers': {
+                'X-Forwarded-For': self.random_ip(),
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Origin': 'https://www.youtube.com',
+                'Referer': 'https://www.youtube.com/',
+            },
+            'format': 'best',
+        }
 
-        for client in player_clients:
-            print(f"  🔄 Trying client: {client}")
-            ydl_opts = {
-                'quiet': True,
-                'no_warnings': True,
-                'socket_timeout': 30,
-                'retries': 2,
-                'geo_bypass': True,
-                'extractor_args': {
-                    'youtube': {
-                        'player_client': [client],
-                    }
-                },
-                'format': 'best',
-            }
+        # Remove cookiefile key if None
+        if ydl_opts['cookiefile'] is None:
+            del ydl_opts['cookiefile']
 
-            if os.path.exists(self.cookies_file):
-                ydl_opts['cookiefile'] = self.cookies_file
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                if not info:
+                    print(f"  ⚫ No info returned")
+                    return self._offline(url)
 
-            try:
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(url, download=False)
-                    if not info:
-                        continue
+                live_status = info.get('live_status', '')
+                is_live = live_status in ('is_live', 'live') or info.get('is_live', False) or info.get('was_live', False)
+                print(f"  ℹ️ live_status={live_status} is_live={is_live}")
 
-                    # Skip if yt-dlp says it's not live
-                    live_status = info.get('live_status', '')
-                    is_live = live_status in ('is_live', 'live') or info.get('is_live', False)
-                    print(f"  ℹ️ live_status={live_status} is_live={is_live}")
+                formats = info.get('formats', [])
+                video_formats = [
+                    f for f in formats
+                    if f.get('url') and f.get('vcodec', 'none') != 'none'
+                ]
 
-                    formats = info.get('formats', [])
-                    video_formats = [
-                        f for f in formats
-                        if f.get('url') and f.get('vcodec', 'none') != 'none'
-                    ]
+                # If we got formats, treat as live regardless
+                if video_formats and not is_live:
+                    is_live = True
+                    print(f"  ⚠️ Has {len(video_formats)} formats, treating as live")
 
-                    direct_url = info.get('url', '')
-                    if not video_formats and direct_url:
-                        video_formats = [{'url': direct_url, 'height': 0}]
+                direct_url = info.get('url', '')
+                if not video_formats and direct_url:
+                    video_formats = [{'url': direct_url, 'height': 0}]
 
-                    if video_formats:
-                        print(f"  ✅ Client {client} worked! {len(video_formats)} formats")
-                        video_id = info.get('id', '')
-                        channel_id = info.get('channel_id', video_id)
-                        channel_name = info.get('channel', info.get('uploader', 'Unknown'))
-                        clean_name = re.sub(r'[^\w\s-]', '', channel_name).strip()
-                        title = info.get('title', 'Unknown')
-                        channel_url = info.get('channel_url', url)
+                if not video_formats:
+                    print(f"  ⚫ No formats found")
+                    return self._offline(url, info)
 
-                        video_formats.sort(key=lambda f: f.get('height', 0), reverse=True)
+                print(f"  ✅ Got {len(video_formats)} formats")
 
-                        streams = {}
-                        hd = [f for f in video_formats if f.get('height', 0) >= 720]
-                        if hd:
-                            streams['hd'] = {'url': hd[0]['url'], 'height': hd[0].get('height', 0), 'quality_tag': f"{hd[0].get('height',0)}p"}
+                video_id    = info.get('id', '')
+                channel_id  = info.get('channel_id', video_id)
+                channel_name = info.get('channel', info.get('uploader', 'Unknown'))
+                clean_name  = re.sub(r'[^\w\s-]', '', channel_name).strip()
+                title       = info.get('title', 'Unknown')
+                channel_url = info.get('channel_url', url)
 
-                        mobile = [f for f in video_formats if 0 < f.get('height', 0) <= 480]
-                        if mobile:
-                            streams['mobile'] = {'url': mobile[0]['url'], 'height': mobile[0].get('height', 0), 'quality_tag': f"{mobile[0].get('height',0)}p"}
+                video_formats.sort(key=lambda f: f.get('height', 0), reverse=True)
 
-                        if not streams:
-                            streams['main'] = {'url': video_formats[0]['url'], 'height': video_formats[0].get('height', 0), 'quality_tag': f"{video_formats[0].get('height',0)}p"}
+                streams = {}
+                hd = [f for f in video_formats if f.get('height', 0) >= 720]
+                if hd:
+                    streams['hd'] = {'url': hd[0]['url'], 'height': hd[0].get('height', 0), 'quality_tag': f"{hd[0].get('height',0)}p"}
 
-                        self.cache['channels'][channel_id] = {
-                            'name': channel_name,
-                            'video_id': video_id,
-                            'last_seen': datetime.now().isoformat()
-                        }
+                mobile = [f for f in video_formats if 0 < f.get('height', 0) <= 480]
+                if mobile:
+                    streams['mobile'] = {'url': mobile[0]['url'], 'height': mobile[0].get('height', 0), 'quality_tag': f"{mobile[0].get('height',0)}p"}
 
-                        return {
-                            'status': 'live',
-                            'video_id': video_id,
-                            'channel_id': channel_id,
-                            'name': clean_name,
-                            'title': title,
-                            'channel_url': channel_url,
-                            'streams': streams,
-                            'is_live': is_live,
-                        }
-            except Exception as e:
-                print(f"  ⚠️ Client {client} failed: {str(e)[:120]}")
-                continue
+                if not streams:
+                    streams['main'] = {'url': video_formats[0]['url'], 'height': video_formats[0].get('height', 0), 'quality_tag': f"{video_formats[0].get('height',0)}p"}
 
-        print(f"  ⚫ All clients failed for {url}")
+                self.cache['channels'][channel_id] = {
+                    'name': channel_name,
+                    'video_id': video_id,
+                    'last_seen': datetime.now().isoformat()
+                }
+
+                return {
+                    'status': 'live',
+                    'video_id': video_id,
+                    'channel_id': channel_id,
+                    'name': clean_name,
+                    'title': title,
+                    'channel_url': channel_url,
+                    'streams': streams,
+                    'is_live': is_live,
+                }
+
+        except Exception as e:
+            print(f"  ⚠️ Error: {str(e)[:150]}")
+            return self._offline(url)
+
+    def _offline(self, url, info=None):
+        video_id   = info.get('id', '')   if info else ''
+        channel_id = info.get('channel_id', url) if info else url
+        name       = info.get('channel', url.split('/')[-1]) if info else url.split('/')[-1]
+        channel_url = info.get('channel_url', url) if info else url
         return {
             'status': 'offline',
-            'video_id': '',
-            'channel_id': url,
-            'name': url.split('/')[-1],
+            'video_id': video_id,
+            'channel_id': channel_id,
+            'name': re.sub(r'[^\w\s-]', '', name).strip(),
             'title': '',
-            'channel_url': url,
-            'is_live': False
+            'channel_url': channel_url,
+            'is_live': False,
         }
 
     def generate_playlists(self, channels_data):
@@ -169,24 +193,13 @@ class YouTubePlaylistGenerator:
                 for lines in [main_lines, hd_lines, mobile_lines, audio_lines]:
                     lines += [f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{name}" group-title="Offline",{name} [Offline]', fallback, ""]
 
-        file_map = [
-            ('streams.m3u8',        main_lines),
-            ('streams_hd.m3u8',     hd_lines),
-            ('streams_mobile.m3u8', mobile_lines),
-            ('streams_audio.m3u8',  audio_lines),
-        ]
-        for filename, lines in file_map:
+        for filename, lines in [('streams.m3u8', main_lines), ('streams_hd.m3u8', hd_lines), ('streams_mobile.m3u8', mobile_lines), ('streams_audio.m3u8', audio_lines)]:
             with open(filename, 'w', encoding='utf-8') as f:
                 f.write('\n'.join(lines))
             print(f"✅ {filename}")
 
         with open('stats.json', 'w') as f:
-            json.dump({
-                'generated': now_utc,
-                'total': len(channels_data),
-                'live': live_count,
-                'offline': offline_count
-            }, f, indent=2)
+            json.dump({'generated': now_utc, 'total': len(channels_data), 'live': live_count, 'offline': offline_count}, f, indent=2)
 
         return live_count, offline_count
 
