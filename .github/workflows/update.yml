@@ -21,10 +21,33 @@ jobs:
         with:
           token: ${{ secrets.PAT_TOKEN }}
           fetch-depth: 0
+
       - name: Setup Python & dependencies
         run: |
           pip install --upgrade pip yt-dlp requests
           echo "yt-dlp: $(yt-dlp --version)"
+
+      - name: Setup Cloudflare WARP
+        continue-on-error: true
+        timeout-minutes: 3
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq wireguard-tools iptables
+          curl -fsSL https://github.com/ViRb3/wgcf/releases/download/v2.2.22/wgcf_2.2.22_linux_amd64 -o wgcf
+          chmod +x wgcf
+          sudo mv wgcf /usr/local/bin/
+          wgcf register --accept-tos
+          wgcf generate
+          sudo mkdir -p /etc/wireguard
+          sudo cp wgcf-profile.conf /etc/wireguard/wgcf.conf
+          # Patch config to avoid kernel module issues
+          sudo sed -i 's/^Table = .*//' /etc/wireguard/wgcf.conf || true
+          sudo sed -i '/^DNS/d' /etc/wireguard/wgcf.conf || true
+          sudo wg-quick up /etc/wireguard/wgcf.conf || true
+          sleep 5
+          curl -s --max-time 5 https://cloudflare.com/cdn-cgi/trace | grep ip || true
+          echo "WARP setup done"
+
       - name: Write cookies
         env:
           YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
@@ -34,12 +57,15 @@ jobs:
             exit 1
           fi
           echo "$YOUTUBE_COOKIES" > cookies.txt
+
       - name: Create directories
         run: |
           mkdir -p channels
           touch channels/.gitkeep
+
       - name: Run generator
         run: python generate.py
+
       - name: Commit and push
         timeout-minutes: 15
         run: |
@@ -50,6 +76,7 @@ jobs:
           git diff --staged --quiet && echo "No changes" && exit 0
           git commit -m "Update streams $(date -u '+%Y-%m-%d %H:%M UTC')"
           git push origin HEAD:main --force
+
       - name: Cleanup
         if: always()
         run: rm -f cookies.txt wgcf-profile.conf wgcf-account.toml 2>/dev/null || true
