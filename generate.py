@@ -32,33 +32,30 @@ class YouTubePlaylistGenerator:
         return safe.lower()
 
     def random_ip(self):
-        # Use African/Asian IP ranges — less blocked by YouTube than US datacenter IPs
         ranges = [
-            # Nigeria ranges
             f"41.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
             f"197.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
-            # Pakistan ranges
             f"39.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
             f"119.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
-            # India ranges
             f"49.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
-            f"103.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
         ]
         return random.choice(ranges)
 
     def get_stream_info(self, url):
-        # Try multiple country bypass + client combinations
+        # android/ios clients: NO cookies (they don't support it — this is intentional)
+        # web client: WITH cookies as fallback
         attempts = [
-            ('android', 'NG'),
-            ('ios',     'NG'),
-            ('android', 'PK'),
-            ('ios',     'IN'),
-            ('android', 'MX'),
-            ('web',     'NG'),
+            ('android', 'NG',  False),
+            ('ios',     'NG',  False),
+            ('android', 'PK',  False),
+            ('android', 'IN',  False),
+            ('android', 'MX',  False),
+            ('web',     'NG',  True),
+            ('web',     'US',  True),
         ]
 
-        for client, country in attempts:
-            print(f"  🔄 Trying client={client} country={country}")
+        for client, country, use_cookies in attempts:
+            print(f"  🔄 Trying client={client} country={country} cookies={use_cookies}")
             ydl_opts = {
                 'quiet': False,
                 'no_warnings': False,
@@ -74,14 +71,15 @@ class YouTubePlaylistGenerator:
                 },
                 'headers': {
                     'X-Forwarded-For': self.random_ip(),
-                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Accept-Language': f'en-{country},en;q=0.9',
                     'Origin': 'https://www.youtube.com',
                     'Referer': 'https://www.youtube.com/',
                 },
                 'format': 'best',
             }
 
-            if os.path.exists(self.cookies_file):
+            # Only pass cookies to web client
+            if use_cookies and os.path.exists(self.cookies_file):
                 ydl_opts['cookiefile'] = self.cookies_file
 
             try:
@@ -109,7 +107,7 @@ class YouTubePlaylistGenerator:
                         print(f"  ⚠️ Has formats, treating as live")
 
                     if not video_formats:
-                        print(f"  ⚫ No formats for {client}/{country}, trying next")
+                        print(f"  ⚫ No formats, trying next")
                         continue
 
                     print(f"  ✅ Success! client={client} country={country} formats={len(video_formats)}")
@@ -185,8 +183,8 @@ class YouTubePlaylistGenerator:
 
             if ch.get('status') == 'live':
                 live_count += 1
-                streams      = ch.get('streams', {})
-                main_stream  = streams.get('hd') or next(iter(streams.values()), None)
+                streams       = ch.get('streams', {})
+                main_stream   = streams.get('hd') or next(iter(streams.values()), None)
                 mobile_stream = streams.get('mobile')
 
                 if main_stream:
