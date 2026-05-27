@@ -40,7 +40,6 @@ jobs:
           wgcf generate
           sudo mkdir -p /etc/wireguard
           sudo cp wgcf-profile.conf /etc/wireguard/wgcf.conf
-          # Patch config to avoid kernel module issues
           sudo sed -i 's/^Table = .*//' /etc/wireguard/wgcf.conf || true
           sudo sed -i '/^DNS/d' /etc/wireguard/wgcf.conf || true
           sudo wg-quick up /etc/wireguard/wgcf.conf || true
@@ -56,7 +55,9 @@ jobs:
             echo "No cookies found"
             exit 1
           fi
-          echo "$YOUTUBE_COOKIES" > cookies.txt
+          printf '%s\n' "$YOUTUBE_COOKIES" > cookies.txt
+          echo "Lines: $(wc -l < cookies.txt)"
+          echo "Has PSID: $(grep -c '__Secure-3PSID' cookies.txt)"
 
       - name: Create directories
         run: |
