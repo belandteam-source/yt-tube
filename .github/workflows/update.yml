@@ -1,4 +1,5 @@
 name: Update YouTube Streams
+
 on:
   workflow_dispatch:
   schedule:
@@ -7,14 +8,18 @@ on:
     paths:
       - 'streams.txt'
       - 'generate.py'
+
 permissions:
   contents: write
+
 env:
   PYTHONUNBUFFERED: "1"
+
 jobs:
   update:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -57,7 +62,6 @@ jobs:
           fi
           printf '%s\n' "$YOUTUBE_COOKIES" > cookies.txt
           echo "Lines: $(wc -l < cookies.txt)"
-          echo "Has PSID: $(grep -c '__Secure-3PSID' cookies.txt)"
 
       - name: Create directories
         run: |
@@ -67,8 +71,14 @@ jobs:
       - name: Run generator
         run: python generate.py
 
+      - name: Stop WARP before push
+        continue-on-error: true
+        run: |
+          sudo wg-quick down /etc/wireguard/wgcf.conf || true
+          echo "WARP stopped"
+
       - name: Commit and push
-        timeout-minutes: 15
+        timeout-minutes: 5
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -80,4 +90,6 @@ jobs:
 
       - name: Cleanup
         if: always()
-        run: rm -f cookies.txt wgcf-profile.conf wgcf-account.toml 2>/dev/null || true
+        run: |
+          sudo wg-quick down /etc/wireguard/wgcf.conf 2>/dev/null || true
+          rm -f cookies.txt wgcf-profile.conf wgcf-account.toml 2>/dev/null || true
