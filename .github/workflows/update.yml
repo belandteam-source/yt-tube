@@ -34,7 +34,7 @@ jobs:
 
       - name: Setup Cloudflare WARP
         continue-on-error: true
-        timeout-minutes: 3
+        timeout-minutes: 5
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq wireguard-tools iptables
@@ -47,10 +47,34 @@ jobs:
           sudo cp wgcf-profile.conf /etc/wireguard/wgcf.conf
           sudo sed -i 's/^Table = .*//' /etc/wireguard/wgcf.conf || true
           sudo sed -i '/^DNS/d' /etc/wireguard/wgcf.conf || true
+
+          # First attempt to bring up WARP
           sudo wg-quick up /etc/wireguard/wgcf.conf || true
-          sleep 5
-          curl -s --max-time 5 https://cloudflare.com/cdn-cgi/trace | grep ip || true
-          echo "WARP setup done"
+          echo "Waiting 15 seconds for WARP to stabilize..."
+          sleep 15
+
+          # Verify WARP connection
+          IP=$(curl -s --max-time 10 https://cloudflare.com/cdn-cgi/trace | grep "^ip=" | cut -d= -f2)
+          echo "Current IP after WARP: $IP"
+
+          if [[ "$IP" == 172.* ]] || [[ "$IP" == 2606:* ]]; then
+            echo "✅ WARP connected successfully - IP: $IP"
+          else
+            echo "⚠️ WARP not connected (IP: $IP) - trying restart..."
+            sudo wg-quick down /etc/wireguard/wgcf.conf || true
+            sleep 5
+            sudo wg-quick up /etc/wireguard/wgcf.conf || true
+            sleep 15
+
+            # Check again
+            IP2=$(curl -s --max-time 10 https://cloudflare.com/cdn-cgi/trace | grep "^ip=" | cut -d= -f2)
+            echo "IP after restart: $IP2"
+            if [[ "$IP2" == 172.* ]] || [[ "$IP2" == 2606:* ]]; then
+              echo "✅ WARP connected after restart - IP: $IP2"
+            else
+              echo "⚠️ WARP still not connected - continuing anyway with IP: $IP2"
+            fi
+          fi
 
       - name: Write cookies
         env:
