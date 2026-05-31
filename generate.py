@@ -31,39 +31,24 @@ class YouTubePlaylistGenerator:
         safe = re.sub(r'[-\s]+', '_', safe)
         return safe.lower()
 
-    def random_ip(self, country):
-        """Generate random IP for given country"""
-        ranges = {
-            'PK': [f"39.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
-                   f"119.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
-                   f"182.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}"],
-            'IN': [f"49.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
-                   f"103.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
-                   f"157.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}"],
-            'NG': [f"41.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
-                   f"197.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}"],
-            'US': [f"172.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
-                   f"104.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}"],
-            'GB': [f"51.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
-                   f"86.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}"],
-        }
-        ips = ranges.get(country, ranges['US'])
-        return random.choice(ips)
+    def random_ip(self):
+        ranges = [
+            f"41.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
+            f"197.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
+            f"39.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
+            f"119.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
+            f"49.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
+        ]
+        return random.choice(ranges)
 
     def get_stream_info(self, url):
-        # Try PK and IN first (no geo restriction on stream URLs)
-        # Then fall back to US/NG (may add geo restriction)
         attempts = [
-            ('android', 'PK',  False),
-            ('android', 'IN',  False),
-            ('ios',     'PK',  False),
-            ('ios',     'IN',  False),
-            ('android', 'GB',  False),
             ('android', 'NG',  False),
             ('ios',     'NG',  False),
+            ('android', 'PK',  False),
+            ('android', 'IN',  False),
             ('android', 'MX',  False),
-            ('web',     'PK',  True),
-            ('web',     'IN',  True),
+            ('web',     'NG',  True),
             ('web',     'US',  True),
         ]
 
@@ -83,7 +68,7 @@ class YouTubePlaylistGenerator:
                     }
                 },
                 'headers': {
-                    'X-Forwarded-For': self.random_ip(country),
+                    'X-Forwarded-For': self.random_ip(),
                     'Accept-Language': f'en-{country},en;q=0.9',
                     'Origin': 'https://www.youtube.com',
                     'Referer': 'https://www.youtube.com/',
@@ -122,26 +107,7 @@ class YouTubePlaylistGenerator:
                         print(f"  ⚫ No formats, trying next")
                         continue
 
-                    # Check if stream URL has geo restriction
-                    first_url = video_formats[0].get('url', '')
-                    has_gcr = 'gcr/' in first_url
-                    gcr_country = ''
-                    if has_gcr:
-                        gcr_match = re.search(r'gcr/([a-z]+)', first_url)
-                        if gcr_match:
-                            gcr_country = gcr_match.group(1).upper()
-
-                    if has_gcr:
-                        print(f"  ⚠️ Stream has geo restriction: gcr/{gcr_country} - trying next country")
-                        # Only accept if gcr country matches a widely accessible region
-                        # Skip US-only streams if we haven't tried all options yet
-                        attempts_left = attempts[attempts.index((client, country, use_cookies))+1:]
-                        if gcr_country == 'US' and len(attempts_left) > 2:
-                            continue
-                    else:
-                        print(f"  ✅ No geo restriction on stream URL!")
-
-                    print(f"  ✅ Success! client={client} country={country} gcr={gcr_country or 'none'} formats={len(video_formats)}")
+                    print(f"  ✅ Success! client={client} country={country} formats={len(video_formats)}")
 
                     video_id     = info.get('id', '')
                     channel_id   = info.get('channel_id', video_id)
@@ -179,7 +145,6 @@ class YouTubePlaylistGenerator:
                         'channel_url': channel_url,
                         'streams': streams,
                         'is_live': is_live,
-                        'geo': gcr_country or 'none',
                     }
 
             except Exception as e:
@@ -212,7 +177,6 @@ class YouTubePlaylistGenerator:
             name        = ch.get('name', 'Unknown')
             channel_id  = ch.get('channel_id', '')
             video_id    = ch.get('video_id', '')
-            geo         = ch.get('geo', 'none')
 
             if ch.get('status') == 'live':
                 live_count += 1
@@ -222,8 +186,7 @@ class YouTubePlaylistGenerator:
 
                 if main_stream:
                     qtag = main_stream.get('quality_tag', 'Auto')
-                    geo_tag = f" [{geo}]" if geo != 'none' else ""
-                    main_lines   += [f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{name}" group-title="Live",{name} [{qtag}]{geo_tag} 🔴', main_stream['url'], ""]
+                    main_lines   += [f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{name}" group-title="Live",{name} [{qtag}] 🔴', main_stream['url'], ""]
                     hd_lines     += [f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{name}" group-title="HD",{name} [HD]', main_stream['url'], ""]
                     mobile_lines += [f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{name}" group-title="Mobile",{name} [Mobile]', (mobile_stream or main_stream)['url'], ""]
                     audio_lines  += [f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{name}" group-title="Audio",{name} [Audio]', main_stream['url'], ""]
