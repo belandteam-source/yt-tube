@@ -34,8 +34,9 @@ jobs:
 
       - name: Setup Cloudflare WARP
         continue-on-error: true
-        timeout-minutes: 2
         run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq wireguard-tools iptables
           curl -fsSL https://github.com/ViRb3/wgcf/releases/download/v2.2.22/wgcf_2.2.22_linux_amd64 -o wgcf
           chmod +x wgcf
           sudo mv wgcf /usr/local/bin/
@@ -43,11 +44,7 @@ jobs:
           wgcf generate
           sudo mkdir -p /etc/wireguard
           sudo cp wgcf-profile.conf /etc/wireguard/wgcf.conf
-          sudo sed -i '/^DNS/d' /etc/wireguard/wgcf.conf || true
-          sudo sed -i '/^Table/d' /etc/wireguard/wgcf.conf || true
-          sudo wg-quick up wgcf || true
-          sleep 5
-          echo "WARP setup done"
+          sudo wg-quick up /etc/wireguard/wgcf.conf || true
 
       - name: Write cookies
         env:
@@ -57,7 +54,7 @@ jobs:
             echo "No cookies found"
             exit 1
           fi
-          printf '%s\n' "$YOUTUBE_COOKIES" > cookies.txt
+          echo "$YOUTUBE_COOKIES" > cookies.txt
           echo "Lines: $(wc -l < cookies.txt)"
 
       - name: Create directories
@@ -105,7 +102,7 @@ jobs:
 
       - name: Stop WARP before push
         continue-on-error: true
-        run: sudo wg-quick down wgcf || true
+        run: sudo wg-quick down /etc/wireguard/wgcf.conf || true
 
       - name: Commit and push
         timeout-minutes: 5
@@ -121,5 +118,5 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          sudo wg-quick down wgcf 2>/dev/null || true
+          sudo wg-quick down /etc/wireguard/wgcf.conf 2>/dev/null || true
           rm -f cookies.txt wgcf-profile.conf wgcf-account.toml 2>/dev/null || true
