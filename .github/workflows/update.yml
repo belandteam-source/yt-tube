@@ -34,46 +34,45 @@ jobs:
 
       - name: Setup Cloudflare WARP
         continue-on-error: true
-        timeout-minutes: 5
+        timeout-minutes: 3
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq wireguard-tools iptables
+          # Install wireguard only (skip full apt-get update)
+          sudo apt-get install -y -qq wireguard-tools 2>/dev/null || true
+
+          # Download wgcf
           curl -fsSL https://github.com/ViRb3/wgcf/releases/download/v2.2.22/wgcf_2.2.22_linux_amd64 -o wgcf
           chmod +x wgcf
           sudo mv wgcf /usr/local/bin/
+
+          # Register and generate config
           wgcf register --accept-tos
           wgcf generate
+
+          # Setup wireguard
           sudo mkdir -p /etc/wireguard
           sudo cp wgcf-profile.conf /etc/wireguard/wgcf.conf
-          sudo sed -i 's/^Table = .*//' /etc/wireguard/wgcf.conf || true
           sudo sed -i '/^DNS/d' /etc/wireguard/wgcf.conf || true
+          sudo sed -i '/^Table/d' /etc/wireguard/wgcf.conf || true
 
-          # First attempt to bring up WARP
-          sudo wg-quick up /etc/wireguard/wgcf.conf || true
-          echo "Waiting 15 seconds for WARP to stabilize..."
+          # Bring up WARP
+          sudo wg-quick up wgcf || true
           sleep 15
 
-          # Verify WARP connection
+          # Verify
           IP=$(curl -s --max-time 10 https://cloudflare.com/cdn-cgi/trace | grep "^ip=" | cut -d= -f2)
-          echo "Current IP after WARP: $IP"
+          echo "IP after WARP: $IP"
 
-          if [[ "$IP" == 172.* ]] || [[ "$IP" == 2606:* ]]; then
-            echo "✅ WARP connected successfully - IP: $IP"
-          else
-            echo "⚠️ WARP not connected (IP: $IP) - trying restart..."
-            sudo wg-quick down /etc/wireguard/wgcf.conf || true
-            sleep 5
-            sudo wg-quick up /etc/wireguard/wgcf.conf || true
-            sleep 15
-
-            # Check again
+          # Restart if not connected
+          if [[ "$IP" != 172.* ]] && [[ "$IP" != 2606:* ]]; then
+            echo "WARP not connected, restarting..."
+            sudo wg-quick down wgcf || true
+            sleep 3
+            sudo wg-quick up wgcf || true
+            sleep 10
             IP2=$(curl -s --max-time 10 https://cloudflare.com/cdn-cgi/trace | grep "^ip=" | cut -d= -f2)
             echo "IP after restart: $IP2"
-            if [[ "$IP2" == 172.* ]] || [[ "$IP2" == 2606:* ]]; then
-              echo "✅ WARP connected after restart - IP: $IP2"
-            else
-              echo "⚠️ WARP still not connected - continuing anyway with IP: $IP2"
-            fi
+          else
+            echo "✅ WARP connected: $IP"
           fi
 
       - name: Write cookies
@@ -96,7 +95,6 @@ jobs:
         run: |
           SUCCESS=false
 
-          # Attempt 1
           echo "🔄 Attempt 1 of 3..."
           python generate.py
           if grep -q "manifest.googlevideo.com" streams.m3u8; then
@@ -104,9 +102,8 @@ jobs:
             SUCCESS=true
           fi
 
-          # Attempt 2 - wait 2 minutes
           if [ "$SUCCESS" = false ]; then
-            echo "⚠️ Attempt 1 failed - waiting 2 minutes before retry..."
+            echo "⚠️ Attempt 1 failed - waiting 2 minutes..."
             sleep 120
             echo "🔄 Attempt 2 of 3..."
             python generate.py
@@ -116,9 +113,8 @@ jobs:
             fi
           fi
 
-          # Attempt 3 - wait 5 minutes
           if [ "$SUCCESS" = false ]; then
-            echo "⚠️ Attempt 2 failed - waiting 5 minutes before retry..."
+            echo "⚠️ Attempt 2 failed - waiting 5 minutes..."
             sleep 300
             echo "🔄 Attempt 3 of 3..."
             python generate.py
@@ -129,15 +125,13 @@ jobs:
           fi
 
           if [ "$SUCCESS" = false ]; then
-            echo "❌ All 3 attempts failed - keeping last good version on GitHub"
+            echo "❌ All attempts failed - keeping last good version"
             exit 1
           fi
 
       - name: Stop WARP before push
         continue-on-error: true
-        run: |
-          sudo wg-quick down /etc/wireguard/wgcf.conf || true
-          echo "WARP stopped"
+        run: sudo wg-quick down wgcf || true
 
       - name: Commit and push
         timeout-minutes: 5
@@ -153,5 +147,5 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          sudo wg-quick down /etc/wireguard/wgcf.conf 2>/dev/null || true
+          sudo wg-quick down wgcf 2>/dev/null || true
           rm -f cookies.txt wgcf-profile.conf wgcf-account.toml 2>/dev/null || true
