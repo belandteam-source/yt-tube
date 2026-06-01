@@ -31,136 +31,113 @@ class YouTubePlaylistGenerator:
         safe = re.sub(r'[-\s]+', '_', safe)
         return safe.lower()
 
-    def random_ip(self):
-        ranges = [
-            f"41.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
-            f"197.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
-            f"39.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
-            f"119.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
-            f"49.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
-        ]
-        return random.choice(ranges)
-
     def get_stream_info(self, url):
-        attempts = [
-            ('android', 'NG',  False),
-            ('ios',     'NG',  False),
-            ('android', 'PK',  False),
-            ('android', 'IN',  False),
-            ('android', 'MX',  False),
-            ('web',     'NG',  True),
-            ('web',     'US',  True),
-        ]
+        # Use same approach as pk3011 - cookies with android/ios clients
+        ydl_opts = {
+            'quiet': False,
+            'no_warnings': False,
+            'socket_timeout': 30,
+            'playlistreverse': False,
+            'playlist_items': '1',
+            'retries': 5,
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'ios'],
+                    'live_from_start': True,
+                    'skip': ['webpage', 'configs']
+                }
+            },
+            'geo_bypass': True,
+            'headers': {
+                'X-Forwarded-For': f'{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Origin': 'https://www.youtube.com',
+                'Referer': 'https://www.youtube.com/',
+            },
+        }
 
-        for client, country, use_cookies in attempts:
-            print(f"  🔄 Trying client={client} country={country} cookies={use_cookies}")
-            ydl_opts = {
-                'quiet': False,
-                'no_warnings': False,
-                'socket_timeout': 30,
-                'retries': 3,
-                'geo_bypass': True,
-                'geo_bypass_country': country,
-                'xff': country,
-                'extractor_args': {
-                    'youtube': {
-                        'player_client': [client],
-                    }
-                },
-                'headers': {
-                    'X-Forwarded-For': self.random_ip(),
-                    'Accept-Language': f'en-{country},en;q=0.9',
-                    'Origin': 'https://www.youtube.com',
-                    'Referer': 'https://www.youtube.com/',
-                },
-                'format': 'best',
-            }
+        # Pass cookies using 'cookies' key like pk3011
+        if os.path.exists(self.cookies_file):
+            ydl_opts['cookies'] = self.cookies_file
+            print(f"  🍪 Using cookies file")
 
-            if use_cookies and os.path.exists(self.cookies_file):
-                ydl_opts['cookiefile'] = self.cookies_file
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
 
-            try:
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(url, download=False)
-                    if not info:
-                        continue
+                if not info:
+                    print(f"  ⚫ No info returned")
+                    return None
 
-                    live_status = info.get('live_status', '')
-                    is_live = live_status in ('is_live', 'live') or info.get('is_live', False)
-                    print(f"  ℹ️ live_status={live_status} is_live={is_live}")
+                video_id = info.get('id', '')
+                channel_id = info.get('channel_id', video_id)
+                channel_name = info.get('channel', info.get('uploader', 'Unknown'))
+                clean_name = re.sub(r'[^\w\s-]', '', channel_name).strip()
+                title = info.get('title', 'Unknown')
+                channel_url = info.get('channel_url', url)
 
-                    formats = info.get('formats', [])
-                    video_formats = [
-                        f for f in formats
-                        if f.get('url') and f.get('vcodec', 'none') != 'none'
-                    ]
+                live_status = info.get('live_status', '')
+                is_live = live_status in ['is_live', 'is_upcoming', 'live'] or info.get('is_live') or info.get('was_live')
 
-                    direct_url = info.get('url', '')
-                    if not video_formats and direct_url:
-                        video_formats = [{'url': direct_url, 'height': 0}]
+                formats = info.get('formats', [])
+                print(f"  ℹ️ live_status={live_status} formats={len(formats)}")
 
-                    if video_formats and not is_live:
-                        is_live = True
-                        print(f"  ⚠️ Has formats, treating as live")
+                if formats and not is_live:
+                    is_live = True
+                    print(f"  ⚠️ Has formats, treating as live")
 
-                    if not video_formats:
-                        print(f"  ⚫ No formats, trying next")
-                        continue
+                video_formats = [
+                    f for f in formats
+                    if f.get('height') and f.get('url') and f.get('vcodec') != 'none'
+                ]
 
-                    print(f"  ✅ Success! client={client} country={country} formats={len(video_formats)}")
-
-                    video_id     = info.get('id', '')
-                    channel_id   = info.get('channel_id', video_id)
-                    channel_name = info.get('channel', info.get('uploader', 'Unknown'))
-                    clean_name   = re.sub(r'[^\w\s-]', '', channel_name).strip()
-                    title        = info.get('title', 'Unknown')
-                    channel_url  = info.get('channel_url', url)
-
-                    video_formats.sort(key=lambda f: f.get('height', 0), reverse=True)
-
-                    streams = {}
-                    hd = [f for f in video_formats if f.get('height', 0) >= 720]
-                    if hd:
-                        streams['hd'] = {'url': hd[0]['url'], 'height': hd[0].get('height', 0), 'quality_tag': f"{hd[0].get('height',0)}p"}
-
-                    mobile = [f for f in video_formats if 0 < f.get('height', 0) <= 480]
-                    if mobile:
-                        streams['mobile'] = {'url': mobile[0]['url'], 'height': mobile[0].get('height', 0), 'quality_tag': f"{mobile[0].get('height',0)}p"}
-
-                    if not streams:
-                        streams['main'] = {'url': video_formats[0]['url'], 'height': video_formats[0].get('height', 0), 'quality_tag': f"{video_formats[0].get('height',0)}p"}
-
-                    self.cache['channels'][channel_id] = {
-                        'name': channel_name,
-                        'video_id': video_id,
-                        'last_seen': datetime.now().isoformat()
-                    }
-
+                if not video_formats:
+                    print(f"  ⚫ No video formats found")
                     return {
-                        'status': 'live',
+                        'status': 'offline',
                         'video_id': video_id,
                         'channel_id': channel_id,
                         'name': clean_name,
                         'title': title,
                         'channel_url': channel_url,
-                        'streams': streams,
-                        'is_live': is_live,
+                        'is_live': False,
                     }
 
-            except Exception as e:
-                print(f"  ⚠️ client={client} country={country} failed: {str(e)[:150]}")
-                continue
+                video_formats.sort(key=lambda f: (f.get('height', 0), f.get('fps', 0)), reverse=True)
+                print(f"  ✅ Found {len(video_formats)} formats, best: {video_formats[0].get('height',0)}p")
 
-        print(f"  ⚫ All attempts failed for {url}")
-        return {
-            'status': 'offline',
-            'video_id': '',
-            'channel_id': url,
-            'name': url.split('/')[-1],
-            'title': '',
-            'channel_url': url,
-            'is_live': False,
-        }
+                streams = {}
+                hd = [f for f in video_formats if f.get('height', 0) >= 720]
+                if hd:
+                    streams['hd'] = {'url': hd[0]['url'], 'height': hd[0].get('height', 0), 'quality_tag': f"{hd[0].get('height',0)}p"}
+
+                mobile = [f for f in video_formats if 0 < f.get('height', 0) <= 480]
+                if mobile:
+                    streams['mobile'] = {'url': mobile[0]['url'], 'height': mobile[0].get('height', 0), 'quality_tag': f"{mobile[0].get('height',0)}p"}
+
+                if not streams:
+                    streams['main'] = {'url': video_formats[0]['url'], 'height': video_formats[0].get('height', 0), 'quality_tag': f"{video_formats[0].get('height',0)}p"}
+
+                self.cache['channels'][channel_id] = {
+                    'name': channel_name,
+                    'video_id': video_id,
+                    'last_seen': datetime.now().isoformat()
+                }
+
+                return {
+                    'status': 'live',
+                    'video_id': video_id,
+                    'channel_id': channel_id,
+                    'name': clean_name,
+                    'title': title,
+                    'channel_url': channel_url,
+                    'streams': streams,
+                    'is_live': is_live,
+                }
+
+        except Exception as e:
+            print(f"  ❌ Error: {str(e)[:200]}")
+            return None
 
     def generate_playlists(self, channels_data):
         now_utc = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
@@ -174,9 +151,9 @@ class YouTubePlaylistGenerator:
         offline_count = 0
 
         for ch in channels_data:
-            name        = ch.get('name', 'Unknown')
-            channel_id  = ch.get('channel_id', '')
-            video_id    = ch.get('video_id', '')
+            name       = ch.get('name', 'Unknown')
+            channel_id = ch.get('channel_id', '')
+            video_id   = ch.get('video_id', '')
 
             if ch.get('status') == 'live':
                 live_count += 1
@@ -237,7 +214,7 @@ def main():
 
     for i, url in enumerate(lines, 1):
         print(f"\n[{i}/{len(lines)}] {url}")
-        time.sleep(random.uniform(3, 6))
+        time.sleep(random.uniform(2, 5))
         info = generator.get_stream_info(url)
         if info:
             channels_data.append(info)
