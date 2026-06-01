@@ -34,46 +34,20 @@ jobs:
 
       - name: Setup Cloudflare WARP
         continue-on-error: true
-        timeout-minutes: 3
+        timeout-minutes: 2
         run: |
-          # Install wireguard only (skip full apt-get update)
-          sudo apt-get install -y -qq wireguard-tools 2>/dev/null || true
-
-          # Download wgcf
           curl -fsSL https://github.com/ViRb3/wgcf/releases/download/v2.2.22/wgcf_2.2.22_linux_amd64 -o wgcf
           chmod +x wgcf
           sudo mv wgcf /usr/local/bin/
-
-          # Register and generate config
           wgcf register --accept-tos
           wgcf generate
-
-          # Setup wireguard
           sudo mkdir -p /etc/wireguard
           sudo cp wgcf-profile.conf /etc/wireguard/wgcf.conf
           sudo sed -i '/^DNS/d' /etc/wireguard/wgcf.conf || true
           sudo sed -i '/^Table/d' /etc/wireguard/wgcf.conf || true
-
-          # Bring up WARP
           sudo wg-quick up wgcf || true
-          sleep 15
-
-          # Verify
-          IP=$(curl -s --max-time 10 https://cloudflare.com/cdn-cgi/trace | grep "^ip=" | cut -d= -f2)
-          echo "IP after WARP: $IP"
-
-          # Restart if not connected
-          if [[ "$IP" != 172.* ]] && [[ "$IP" != 2606:* ]]; then
-            echo "WARP not connected, restarting..."
-            sudo wg-quick down wgcf || true
-            sleep 3
-            sudo wg-quick up wgcf || true
-            sleep 10
-            IP2=$(curl -s --max-time 10 https://cloudflare.com/cdn-cgi/trace | grep "^ip=" | cut -d= -f2)
-            echo "IP after restart: $IP2"
-          else
-            echo "✅ WARP connected: $IP"
-          fi
+          sleep 5
+          echo "WARP setup done"
 
       - name: Write cookies
         env:
