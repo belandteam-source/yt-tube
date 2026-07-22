@@ -64,40 +64,41 @@ jobs:
 
       - name: Run generator with retry
         run: |
-          SUCCESS=false
+          set +e
+          WAITS="0 120 300"          # wait (seconds) before attempts 1, 2, 3
+          ATTEMPT=0
+          GEN_OK=false
 
-          echo "🔄 Attempt 1 of 3..."
-          python generate.py
-          if grep -q "manifest.googlevideo.com" streams.m3u8; then
-            echo "✅ Real streams found on attempt 1"
-            SUCCESS=true
-          fi
-
-          if [ "$SUCCESS" = false ]; then
-            echo "⚠️ Attempt 1 failed - waiting 2 minutes..."
-            sleep 120
-            echo "🔄 Attempt 2 of 3..."
-            python generate.py
-            if grep -q "manifest.googlevideo.com" streams.m3u8; then
-              echo "✅ Real streams found on attempt 2"
-              SUCCESS=true
+          for W in $WAITS; do
+            ATTEMPT=$((ATTEMPT+1))
+            if [ "$W" -gt 0 ]; then
+              echo "⏳ waiting ${W}s before attempt ${ATTEMPT}..."
+              sleep "$W"
             fi
-          fi
+            echo "🔄 Attempt ${ATTEMPT}..."
 
-          if [ "$SUCCESS" = false ]; then
-            echo "⚠️ Attempt 2 failed - waiting 5 minutes..."
-            sleep 300
-            echo "🔄 Attempt 3 of 3..."
+            rm -f stats.json                       # so a crash can't read a stale success
             python generate.py
-            if grep -q "manifest.googlevideo.com" streams.m3u8; then
-              echo "✅ Real streams found on attempt 3"
-              SUCCESS=true
-            fi
-          fi
 
-          if [ "$SUCCESS" = false ]; then
-            echo "❌ All attempts failed - keeping last good version"
-            exit 1
+            LIVE=$(python -c "import json;print(json.load(open('stats.json'))['live'])" 2>/dev/null || echo 0)
+            echo "ℹ️ live=${LIVE}"
+
+            if [ "${LIVE:-0}" -gt 0 ]; then
+              echo "✅ Got ${LIVE} live stream(s) on attempt ${ATTEMPT}"
+              GEN_OK=true
+              break
+            fi
+            echo "⚠️ Attempt ${ATTEMPT} produced no live streams"
+          done
+
+          echo "GEN_OK=${GEN_OK}" >> "$GITHUB_ENV"
+
+          if [ "$GEN_OK" != true ]; then
+            # Soft-fail: DON'T fail the job (no red run / no email), just skip the commit
+            # so the last good streams stay in the repo. This run will show green with a warning.
+            echo "::warning::No live streams this run - keeping last good version, skipping commit"
+            # Optional: get a push alert instead of the GitHub email. Uncomment + set your topic:
+            # curl -s -d "yt-tube: no live streams this run" https://ntfy.sh/YOUR_TOPIC || true
           fi
 
       - name: Stop WARP before push
@@ -105,6 +106,7 @@ jobs:
         run: sudo wg-quick down /etc/wireguard/wgcf.conf || true
 
       - name: Commit and push
+        if: env.GEN_OK == 'true'
         timeout-minutes: 5
         run: |
           git config user.name "github-actions[bot]"
