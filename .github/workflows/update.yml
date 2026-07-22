@@ -34,6 +34,7 @@ jobs:
 
       - name: Setup Cloudflare WARP
         continue-on-error: true
+        timeout-minutes: 4          # whole step can't stall the job
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq wireguard-tools iptables
@@ -44,7 +45,10 @@ jobs:
           wgcf generate
           sudo mkdir -p /etc/wireguard
           sudo cp wgcf-profile.conf /etc/wireguard/wgcf.conf
-          sudo wg-quick up /etc/wireguard/wgcf.conf || true
+          # Bound the tunnel bring-up: if wg-quick hangs, kill it after 90s and continue
+          sudo timeout 90 wg-quick up /etc/wireguard/wgcf.conf || echo "⚠️ WARP up failed/timed out - continuing on runner IP"
+          # Log whether WARP is actually active
+          curl -s --max-time 10 https://www.cloudflare.com/cdn-cgi/trace | grep -E 'warp=|ip=' || true
 
       - name: Write cookies
         env:
