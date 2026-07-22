@@ -121,6 +121,19 @@ jobs:
           git commit -m "Update streams $(date -u '+%Y-%m-%d %H:%M UTC')"
           git push origin HEAD:main --force
 
+      - name: Push to solidfunday
+        if: env.GEN_OK == 'true'
+        continue-on-error: true
+        env:
+          PUSH_URL: ${{ secrets.PUSH_URL }}
+          PUSH_SECRET: ${{ secrets.PUSH_SECRET }}
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+            -H "X-Push-Secret: $PUSH_SECRET" \
+            --data-binary @streams.m3u8 \
+            "$PUSH_URL")
+          echo "push HTTP $code"
+
       - name: Cleanup
         if: always()
         run: |
