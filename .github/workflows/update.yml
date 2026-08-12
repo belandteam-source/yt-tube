@@ -47,8 +47,15 @@ jobs:
           sudo cp wgcf-profile.conf /etc/wireguard/wgcf.conf
           # Bound the tunnel bring-up: if wg-quick hangs, kill it after 90s and continue
           sudo timeout 90 wg-quick up /etc/wireguard/wgcf.conf || echo "⚠️ WARP up failed/timed out - continuing on runner IP"
-          # Log whether WARP is actually active
-          curl -s --max-time 10 https://www.cloudflare.com/cdn-cgi/trace | grep -E 'warp=|ip=' || true
+          # VERIFY the tunnel actually passes traffic. A dead tunnel blackholes ALL
+          # network (including DNS) for the whole job - that's the intermittent failure.
+          if curl -s --max-time 10 https://www.cloudflare.com/cdn-cgi/trace | grep -q 'ip='; then
+            echo "✅ WARP verified working"
+            curl -s --max-time 10 https://www.cloudflare.com/cdn-cgi/trace | grep -E 'warp=|ip=' || true
+          else
+            echo "⚠️ WARP tunnel DEAD (no traffic) - tearing down, continuing on runner IP"
+            sudo wg-quick down /etc/wireguard/wgcf.conf 2>/dev/null || true
+          fi
 
       - name: Write cookies
         env:
@@ -79,8 +86,15 @@ jobs:
               echo "⏳ waiting ${W}s before attempt ${ATTEMPT}..."
               sleep "$W"
             fi
-            echo "🔄 Attempt ${ATTEMPT}..."
 
+            # SELF-HEAL: if DNS is dead (WARP blackhole), drop the tunnel so this
+            # attempt runs on the runner IP instead of failing every channel.
+            if ! getent hosts www.youtube.com >/dev/null 2>&1; then
+              echo "⚠️ DNS dead - dropping WARP tunnel before attempt ${ATTEMPT}"
+              sudo wg-quick down /etc/wireguard/wgcf.conf 2>/dev/null || true
+            fi
+
+            echo "🔄 Attempt ${ATTEMPT}..."
             rm -f stats.json                       # so a crash can't read a stale success
             python generate.py
 
