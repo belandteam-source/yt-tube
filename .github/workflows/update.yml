@@ -3,7 +3,7 @@ name: Update YouTube Streams
 on:
   workflow_dispatch:
   schedule:
-    - cron: '23 */4 * * *'
+    - cron: '23 */2 * * *'
   push:
     paths:
       - 'streams.txt'
