@@ -6,6 +6,9 @@ import os
 import json
 from datetime import datetime, timezone
 
+EXPIRE_RE = re.compile(r'[?&/]expire[=/](\d{10})')
+MIN_CARRY_SECONDS = 1800   # carry a previous URL only if it has >=30 min of life left
+
 class YouTubePlaylistGenerator:
     def __init__(self, cookies_file='cookies.txt'):
         self.cookies_file = cookies_file
@@ -30,6 +33,34 @@ class YouTubePlaylistGenerator:
         safe = re.sub(r'[^\w\s-]', '', name).strip()
         safe = re.sub(r'[-\s]+', '_', safe)
         return safe.lower()
+
+    def parse_playlist(self, path):
+        """Previous playlist -> {tvg_name: {'extinf','url','expire'}} (live googlevideo links only)."""
+        entries = {}
+        if not os.path.exists(path):
+            return entries
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                lines = [l.rstrip('\n') for l in f]
+        except Exception:
+            return entries
+        for i, line in enumerate(lines):
+            if line.startswith('#EXTINF') and 'tvg-name="' in line:
+                m = re.search(r'tvg-name="([^"]+)"', line)
+                if not m:
+                    continue
+                for j in range(i + 1, min(i + 3, len(lines))):
+                    u = lines[j].strip()
+                    if u.startswith('http'):
+                        if 'manifest.googlevideo.com' in u:
+                            em = EXPIRE_RE.search(u)
+                            entries[m.group(1)] = {
+                                'extinf': line,
+                                'url': u,
+                                'expire': int(em.group(1)) if em else 0
+                            }
+                        break
+        return entries
 
     def get_stream_info(self, url):
         # Use same approach as pk3011 - cookies with android/ios clients
@@ -139,65 +170,101 @@ class YouTubePlaylistGenerator:
             print(f"  ❌ Error: {str(e)[:200]}")
             return None
 
-    def generate_playlists(self, channels_data):
+    def generate_playlists(self, channels_data, n_sources):
         now_utc = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
-        header = ["#EXTM3U", "#EXT-X-VERSION:3", f"# Generated: {now_utc}", f"# Total channels: {len(channels_data)}", ""]
+        now_ts = int(time.time())
 
-        main_lines   = header.copy()
-        hd_lines     = header.copy()
-        mobile_lines = header.copy()
-        audio_lines  = header.copy()
-        live_count   = 0
-        offline_count = 0
+        files = ['streams.m3u8', 'streams_hd.m3u8', 'streams_mobile.m3u8', 'streams_audio.m3u8']
+        # Parse the PREVIOUS playlists before overwriting - this is the carry-forward source
+        prev = {fn: self.parse_playlist(fn) for fn in files}
+
+        live_entries = {fn: [] for fn in files}
+        live_names = set()
+        offline_list = []
 
         for ch in channels_data:
-            name       = ch.get('name', 'Unknown')
+            name = ch.get('name', 'Unknown')
             channel_id = ch.get('channel_id', '')
-            video_id   = ch.get('video_id', '')
+            video_id = ch.get('video_id', '')
 
             if ch.get('status') == 'live':
-                live_count += 1
-                streams       = ch.get('streams', {})
-                main_stream   = streams.get('hd') or next(iter(streams.values()), None)
+                streams = ch.get('streams', {})
+                main_stream = streams.get('hd') or next(iter(streams.values()), None)
                 mobile_stream = streams.get('mobile')
 
-                if main_stream:
-                    qtag = main_stream.get('quality_tag', 'Auto')
-                    main_lines   += [f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{name}" group-title="Live",{name} [{qtag}] 🔴', main_stream['url'], ""]
-                    hd_lines     += [f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{name}" group-title="HD",{name} [HD]', main_stream['url'], ""]
-                    mobile_lines += [f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{name}" group-title="Mobile",{name} [Mobile]', (mobile_stream or main_stream)['url'], ""]
-                    audio_lines  += [f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{name}" group-title="Audio",{name} [Audio]', main_stream['url'], ""]
+                if not main_stream:
+                    offline_list.append((name, channel_id, f"https://www.youtube.com/watch?v={video_id}"))
+                    continue
 
-                    safe = self.safe_filename(name)
-                    with open(f"{self.channels_dir}/{safe}.m3u8", 'w', encoding='utf-8') as f:
-                        f.write(f"#EXTM3U\n# {name}\n# Generated: {now_utc}\n\n")
-                        f.write(f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{name}",{name} [{qtag}] 🔴 LIVE\n')
-                        f.write(main_stream['url'] + "\n")
+                live_names.add(name)
+                qtag = main_stream.get('quality_tag', 'Auto')
+                live_entries['streams.m3u8'].append((f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{name}" group-title="Live",{name} [{qtag}] 🔴', main_stream['url']))
+                live_entries['streams_hd.m3u8'].append((f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{name}" group-title="HD",{name} [HD]', main_stream['url']))
+                live_entries['streams_mobile.m3u8'].append((f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{name}" group-title="Mobile",{name} [Mobile]', (mobile_stream or main_stream)['url']))
+                live_entries['streams_audio.m3u8'].append((f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{name}" group-title="Audio",{name} [Audio]', main_stream['url']))
+
+                safe = self.safe_filename(name)
+                with open(f"{self.channels_dir}/{safe}.m3u8", 'w', encoding='utf-8') as f:
+                    f.write(f"#EXTM3U\n# {name}\n# Generated: {now_utc}\n\n")
+                    f.write(f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{name}",{name} [{qtag}] 🔴 LIVE\n')
+                    f.write(main_stream['url'] + "\n")
             else:
-                offline_count += 1
                 fallback = f"https://www.youtube.com/watch?v={video_id}" if video_id else ch.get('channel_url', '')
-                for lines in [main_lines, hd_lines, mobile_lines, audio_lines]:
-                    lines += [f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{name}" group-title="Offline",{name} [Offline]', fallback, ""]
+                offline_list.append((name, channel_id, fallback))
 
-        for filename, lines in [
-            ('streams.m3u8',        main_lines),
-            ('streams_hd.m3u8',     hd_lines),
-            ('streams_mobile.m3u8', mobile_lines),
-            ('streams_audio.m3u8',  audio_lines),
-        ]:
-            with open(filename, 'w', encoding='utf-8') as f:
-                f.write('\n'.join(lines))
-            print(f"✅ {filename}")
+        carried_main = 0
+        carried_list = []
+
+        for fn in files:
+            body = []
+            for extinf, url in live_entries[fn]:
+                body += [extinf, url, ""]
+
+            # CARRY-FORWARD: any previous entry not refreshed this run keeps playing
+            # on its old URL as long as that URL still has >=30 min of life left.
+            carried_names = set()
+            for name, e in prev[fn].items():
+                if name in live_names:
+                    continue
+                if e['expire'] - now_ts >= MIN_CARRY_SECONDS:
+                    body += [e['extinf'], e['url'], ""]
+                    carried_names.add(name)
+
+            if fn == 'streams.m3u8':
+                carried_main = len(carried_names)
+                carried_list = sorted(carried_names)
+
+            written_offline = 0
+            for name, cid, fb in offline_list:
+                if name in carried_names:
+                    continue
+                body += [f'#EXTINF:-1 tvg-id="{cid}" tvg-name="{name}" group-title="Offline",{name} [Offline]', fb, ""]
+                written_offline += 1
+
+            total = len(live_entries[fn]) + len(carried_names) + written_offline
+            header = ["#EXTM3U", "#EXT-X-VERSION:3", f"# Generated: {now_utc}", f"# Total channels: {total}", ""]
+            with open(fn, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(header + body))
+            print(f"✅ {fn} ({total} entries)")
+
+        if carried_main:
+            print(f"♻️ Carried {carried_main} channel(s) on still-valid previous URLs: {', '.join(carried_list)}")
+
+        live_count = len(live_names)
+        offline_count = len(offline_list)
+        errors = max(0, n_sources - len(channels_data))
 
         with open('stats.json', 'w') as f:
             json.dump({
                 'generated': now_utc,
-                'total': len(channels_data),
+                'total_sources': n_sources,
                 'live': live_count,
-                'offline': offline_count
+                'carried': carried_main,
+                'offline': offline_count,
+                'errors': errors
             }, f, indent=2)
 
-        return live_count, offline_count
+        return live_count, carried_main, offline_count, errors
 
 
 def main():
@@ -216,15 +283,22 @@ def main():
         print(f"\n[{i}/{len(lines)}] {url}")
         time.sleep(random.uniform(2, 5))
         info = generator.get_stream_info(url)
+        if not info:
+            wait = random.uniform(8, 15)
+            print(f"  🔁 Extraction failed - retrying once in {wait:.0f}s...")
+            time.sleep(wait)
+            info = generator.get_stream_info(url)
         if info:
             channels_data.append(info)
+        else:
+            print("  ❌ Giving up this run - previous URL will be carried if still valid")
 
     print("\n🎬 Generating playlists...")
-    live, offline = generator.generate_playlists(channels_data)
+    live, carried, offline, errors = generator.generate_playlists(channels_data, len(lines))
     generator.save_cache()
-    print(f"\n{'='*40}")
-    print(f"✅ DONE: {live} live / {offline} offline / {len(channels_data)} total")
-    print(f"{'='*40}")
+    print(f"\n{'='*48}")
+    print(f"✅ DONE: {live} fresh / {carried} carried / {offline} offline / {errors} errors / {len(lines)} sources")
+    print(f"{'='*48}")
 
 if __name__ == "__main__":
     main()
