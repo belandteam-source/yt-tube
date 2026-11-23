@@ -1,8 +1,8 @@
 {
-  "generated": "2026-11-23 13:11:54 UTC",
+  "generated": "2026-11-23 18:50:48 UTC",
   "total_sources": 30,
-  "live": 4,
-  "carried": 22,
+  "live": 25,
+  "carried": 0,
   "offline": 0,
-  "errors": 26
+  "errors": 5
 }
